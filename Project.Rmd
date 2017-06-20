@@ -1,7 +1,7 @@
 ---
 title: 'Peer-graded Assignment: Learning Machine Course Project'
 author: "Christian Frei"
-date: "20 June 2017"
+date: "21 June 2017"
 output:
   html_document: default
   pdf_document: default
@@ -90,10 +90,8 @@ pml.testing.csv <- read.csv(dest.filepath[2], header=TRUE, sep=",", na.strings=c
 Next, data have to be explored regarding its structure.
 ```{r results="hide"}
 str(pml.training.csv)
-head(pml.training.csv)
 
 str(pml.testing.csv)
-head(pml.testing.csv)
 ```
 
 At the first glance, the first column is just the row number and some predictors have got a lot of NAs or 0 values. Therefore, those columns have to been eliminated. Furthermore, some rows consist of more than 70% NAs. Those rows will be removed.  
@@ -257,13 +255,13 @@ cm.testing.gbm <- confusionMatrix(prediction.testing.gbm, testing$classe)
 ```{r echo=FALSE}
 plot.training.gbm <- ggplot(data.frame(cm.training.gbm$table), aes(x=Reference,y=Freq, fill=Prediction))  +
    theme(legend.position="none") +
-   ggtitle(paste("Confusion Matrix\nGeneralized Boosted Regression (Training)\nAccuracy =", round(cm.training.gbm$overall['Accuracy'],4))) +
+   ggtitle(paste("Confusion Matrix\nGBM (Training)\nAccuracy =", round(cm.training.gbm$overall['Accuracy'],4))) +
    geom_bar(position = "fill", stat = "identity") +
    labs(x = "Reference", y = "")
 
 plot.testing.gbm <- ggplot(data.frame(cm.testing.gbm$table), aes(x=Reference,y=Freq, fill=Prediction))  +
    theme(legend.position="none") +
-   ggtitle(paste("Confusion Matrix\nGeneralized Boosted Regression (Testing)\nAccuracy =", round(cm.testing.gbm$overall['Accuracy'],4))) +
+   ggtitle(paste("Confusion Matrix\nGBM (Testing)\nAccuracy =", round(cm.testing.gbm$overall['Accuracy'],4))) +
    geom_bar(position = "fill", stat = "identity") +
    labs(x = "Reference", y = "") +
    guides(fill=guide_legend(title="Prediction")) +
@@ -318,10 +316,8 @@ pml_write_files(prediction.valdiation.rf)
 ## Cleaning the data
 ```{r}
 str(pml.training.csv)
-head(pml.training.csv)
 ```
 
 ```{r}
 str(pml.testing.csv)
-head(pml.testing.csv)
 ```
