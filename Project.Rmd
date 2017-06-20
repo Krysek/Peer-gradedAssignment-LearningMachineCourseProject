@@ -285,13 +285,25 @@ grid.arrange(plot.training.gbm, plot.testing.gbm, legend, ncol=2, layout_matrix 
 ## Conclusion
 The random forest and generalized boosted regression are best.
 
-Decision Tree: `r round(cm.testing.rpart$overall['Accuracy'],4)`
+Decision Tree:
 
-Random Forest: `r round(cm.testing.rf$overall['Accuracy'],4)`
+  - Accuracy: `r round(cm.testing.rpart$overall['Accuracy'],4)`
+  
+  - Out of sample error: `r 1- round(cm.testing.rpart$overall['Accuracy'],4)`
 
-Generalized Boosted Regression: `r round(cm.testing.gbm$overall['Accuracy'],4)`
+Random Forest:
 
-Finally, the model with the highest accuracy (Random Forest) will be applied on validation data.
+  - Accuracy: `r round(cm.testing.rf$overall['Accuracy'],4)`
+  
+  - Out of sample error: `r 1 - round(cm.testing.rf$overall['Accuracy'],4)`
+
+Generalized Boosted Regression:
+
+  - Accuracy: `r round(cm.testing.gbm$overall['Accuracy'],4)`
+  
+  - Out of sample error: `r 1 - round(cm.testing.gbm$overall['Accuracy'],4)`
+
+Finally, the model with the highest accuracy and lowest out of sample value will be applied on validation data.
 
 ```{r}
 prediction.valdiation.rf <- predict(model.rf, newdata = valdiation)
