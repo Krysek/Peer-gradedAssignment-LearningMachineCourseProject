@@ -1,0 +1,327 @@
+---
+title: 'Peer-graded Assignment: Learning Machine Course Project'
+author: "Christian Frei"
+date: "20 June 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo=FALSE, results="hide", message=FALSE, warning=FALSE}
+options(warn=-1)
+library(ggplot2)
+library(gridExtra)
+library(caret)
+library(rpart)
+library(plyr)
+library(dplyr)
+library(e1071)
+library(rpart.plot)
+library(randomForest)
+library(gbm)
+library(survival)
+library(splines)
+library(parallel)
+theme_set(theme_minimal())
+
+g_legend<-function(a.gplot){ 
+  tmp <- ggplot_gtable(ggplot_build(a.gplot)) 
+  leg <- which(sapply(tmp$grobs, function(x) x$name) == "guide-box") 
+  legend <- tmp$grobs[[leg]] 
+  return(legend)}
+
+```
+
+## Executive Summary
+### Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+
+
+### Data
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+
+
+### Goal
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+
+
+## Download and Load Data
+In the beginning of this project, data will be downloaded and load into the memory.
+```{r}
+dest.subdirectory <- "./data/"
+dest.filename     <- c("pml-training.csv", "pml-testing.csv")
+dest.filepath     <- paste0(dest.subdirectory, dest.filename)
+source.fileURL    <- c("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", 
+                       "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+  
+if (!file.exists("data")) {
+   dir.create("data")
+}
+
+for (download in 1:2) {
+   if (!file.exists(dest.filepath[download])){
+      download.file(source.fileURL[download], dest.filepath[download], method="curl")
+   } 
+}
+
+pml.training.csv <- read.csv(dest.filepath[1], header=TRUE, sep=",", na.strings=c("NA","#DIV/0!"))
+pml.testing.csv <- read.csv(dest.filepath[2], header=TRUE, sep=",", na.strings=c("NA","#DIV/0!"))
+```
+```
+
+
+
+## Cleaning the data
+Next, data have to be explored regarding its structure.
+```{r results="hide"}
+str(pml.training.csv)
+head(pml.training.csv)
+
+str(pml.testing.csv)
+head(pml.testing.csv)
+```
+
+At the first glance, the first column is just the row number and some predictors have got a lot of NAs or 0 values. Therefore, those columns have to been eliminated. Furthermore, some rows consist of more than 70% NAs. Those rows will be removed.  
+```{r}
+pml.training.csv  <- pml.training.csv[,c(-1)]
+
+nzvCol            <- nearZeroVar(pml.training.csv)
+pml.training.csv  <- pml.training.csv[, -nzvCol]
+
+uselessColumns    <- c()
+
+for (i in 1:length(pml.training.csv)) {
+   if (sum(is.na(pml.training.csv[ , i])) / nrow(pml.training.csv) >= .70) {
+      uselessColumns <- rbind(uselessColumns, i)
+   }
+}
+
+pml.training.csv  <- pml.training.csv[,-uselessColumns]
+```
+
+After cleaning training data, validation data (pml.testing.csv) must be brought into the same shape. Therefore, only those columns will be taken over which are included in the training data (pml.training.csv).
+```{r}
+usedColumns <- colnames(pml.training.csv)
+pml.testing.csv   <- pml.testing.csv[, usedColumns[1:length(usedColumns)-1]]
+```
+
+
+
+## Data Partitioning
+In this step, the training data will be partitioned into training and testing data.
+```{r}
+inTrain     <- createDataPartition(pml.training.csv$classe, p=0.6, list=FALSE)
+training    <- pml.training.csv[inTrain, ]
+testing     <- pml.training.csv[-inTrain, ]
+```
+
+
+The function read.csv loaded data of pml-training.csv & pml-testing.csv. Unfortunately, it often identifies different class for those columns, which are available in both of the loaded data. Therefore, all data of pml-testing.csv have to be converted according to the types of pml-training.csv.
+```{r}
+valdiation  <- rbind(training[1, 1:ncol(training)-1], pml.testing.csv)
+valdiation  <- valdiation[2:nrow(valdiation), ]
+row.names(valdiation) <- 1:nrow(valdiation)
+```
+
+
+
+## Prediction Model 1: Decision Tree
+The first prediction model which will be calculated, is the decision tree.
+```{r}
+set.seed(12345)
+
+model.rpart <- train(classe ~ ., data=training, method="rpart")
+
+# fancyRpartPlot(model.rpart1)
+plot(model.rpart$finalModel, uniform=TRUE, main="Classification Tree")
+text(model.rpart$finalModel, use.n=TRUE, all=TRUE, cex=.8)
+
+prediction.training.rpart <- predict(model.rpart, newdata = training, method="class")
+cm.training.rpart <- confusionMatrix(prediction.training.rpart, training$classe)
+
+prediction.testing.rpart <- predict(model.rpart, newdata = testing, method="class")
+cm.testing.rpart <- confusionMatrix(prediction.testing.rpart, testing$classe)
+```
+
+```{r echo=FALSE}
+plot.training.rpart <- ggplot(data.frame(cm.training.rpart$table), aes(x=Reference,y=Freq, fill=Prediction))  +
+   theme(legend.position="none") +
+   ggtitle(paste("Confusion Matrix\nDecision Tree (Training)\nAccuracy =", round(cm.training.rpart$overall['Accuracy'],4))) +
+   geom_bar(position = "fill", stat = "identity") +
+   labs(x = "Reference", y = "")
+
+plot.testing.rpart <- ggplot(data.frame(cm.training.rpart$table), aes(x=Reference,y=Freq, fill=Prediction))  +
+   theme(legend.position="none") +
+   ggtitle(paste("Confusion Matrix\nDecision Tree (Testing)\nAccuracy =", round(cm.testing.rpart$overall['Accuracy'],4))) +
+   geom_bar(position = "fill", stat = "identity") +
+   labs(x = "Reference", y = "") +
+   guides(fill=guide_legend(title="Prediction")) +
+   theme(legend.position="top") 
+
+legend <- g_legend(plot.testing.rpart)
+
+plot.testing.rpart <- plot.testing.rpart + theme(legend.position="none")
+
+lay <- rbind(c(1,2),
+             c(1,2),
+             c(1,2),
+             c(1,2),
+             c(1,2),
+             c(3,3))
+grid.arrange(plot.training.rpart, plot.testing.rpart, legend, ncol=2, layout_matrix = lay)
+```
+
+
+
+## Prediction Model 2: Random Forest
+The second prediction model which will be calculated, is the random forest.
+```{r}
+set.seed(12345)
+
+# model.rf <- train(classe ~ ., data=training, method="rf")
+model.rf <- randomForest(classe ~ ., data=training)
+
+prediction.training.rf <- predict(model.rf, newdata = training)
+cm.training.rf <- confusionMatrix(prediction.training.rf, training$classe)
+
+prediction.testing.rf <- predict(model.rf, newdata = testing)
+cm.testing.rf <- confusionMatrix(prediction.testing.rf, testing$classe)
+```
+
+```{r echo=FALSE}
+plot.training.rf <- ggplot(data.frame(cm.training.rf$table), aes(x=Reference,y=Freq, fill=Prediction))  +
+   theme(legend.position="none") +
+   ggtitle(paste("Confusion Matrix\nRandom Forest (Training)\nAccuracy =", round(cm.training.rf$overall['Accuracy'],4))) +
+   geom_bar(position = "fill", stat = "identity") +
+   labs(x = "Reference", y = "")
+
+plot.testing.rf <- ggplot(data.frame(cm.testing.rf$table), aes(x=Reference,y=Freq, fill=Prediction))  +
+   theme(legend.position="none") +
+   ggtitle(paste("Confusion Matrix\nRandom Forest (Testing)\nAccuracy =", round(cm.testing.rf$overall['Accuracy'],4))) +
+   geom_bar(position = "fill", stat = "identity") +
+   labs(x = "Reference", y = "") +
+   guides(fill=guide_legend(title="Prediction")) +
+   theme(legend.position="top") 
+
+legend <- g_legend(plot.testing.rf)
+
+plot.testing.rf <- plot.testing.rf + theme(legend.position="none")
+
+lay <- rbind(c(1,2),
+             c(1,2),
+             c(1,2),
+             c(1,2),
+             c(1,2),
+             c(3,3))
+grid.arrange(plot.training.rf, plot.testing.rf, legend, ncol=2, layout_matrix = lay)
+```
+
+
+
+## Prediction Model 3: Generalized Boosted Regression
+The last prediction model which will be calculated, is the random forest.
+```{r, message=FALSE, warning=FALSE}
+set.seed(12345)
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 5,
+                           repeats = 1)
+
+model.gbm <- train(classe ~ ., data=training, method = "gbm",
+                 trControl = fitControl,
+                 verbose = FALSE)
+
+
+prediction.training.gbm <- predict(model.gbm, newdata = training)
+cm.training.gbm <- confusionMatrix(prediction.training.gbm, training$classe)
+
+prediction.testing.gbm <- predict(model.gbm, newdata = testing)
+cm.testing.gbm <- confusionMatrix(prediction.testing.gbm, testing$classe)
+```
+
+
+```{r echo=FALSE}
+plot.training.gbm <- ggplot(data.frame(cm.training.gbm$table), aes(x=Reference,y=Freq, fill=Prediction))  +
+   theme(legend.position="none") +
+   ggtitle(paste("Confusion Matrix\nGeneralized Boosted Regression (Training)\nAccuracy =", round(cm.training.gbm$overall['Accuracy'],4))) +
+   geom_bar(position = "fill", stat = "identity") +
+   labs(x = "Reference", y = "")
+
+plot.testing.gbm <- ggplot(data.frame(cm.testing.gbm$table), aes(x=Reference,y=Freq, fill=Prediction))  +
+   theme(legend.position="none") +
+   ggtitle(paste("Confusion Matrix\nGeneralized Boosted Regression (Testing)\nAccuracy =", round(cm.testing.gbm$overall['Accuracy'],4))) +
+   geom_bar(position = "fill", stat = "identity") +
+   labs(x = "Reference", y = "") +
+   guides(fill=guide_legend(title="Prediction")) +
+   theme(legend.position="top") 
+
+legend <- g_legend(plot.testing.gbm)
+
+plot.testing.gbm <- plot.testing.gbm + theme(legend.position="none")
+
+lay <- rbind(c(1,2),
+             c(1,2),
+             c(1,2),
+             c(1,2),
+             c(1,2),
+             c(3,3))
+grid.arrange(plot.training.gbm, plot.testing.gbm, legend, ncol=2, layout_matrix = lay)
+```
+
+
+
+## Conclusion
+The random forest and generalized boosted regression are best.
+
+Decision Tree: `r round(cm.testing.rpart$overall['Accuracy'],4)`
+
+Random Forest: `r round(cm.testing.rf$overall['Accuracy'],4)`
+
+Generalized Boosted Regression: `r round(cm.testing.gbm$overall['Accuracy'],4)`
+
+Finally, the model with the highest accuracy (Random Forest) will be applied on validation data.
+
+```{r}
+prediction.valdiation.rf <- predict(model.rf, newdata = valdiation)
+prediction.valdiation.rf
+```
+
+
+```{r}
+pml_write_files = function(x) {
+  n = length(x)
+  for (i in 1:n) {
+    filename = paste0("problem_id_", i, "_", prediction.valdiation.rf[i], ".txt")
+    write.table(x[i], file=filename, quote=FALSE,row.names=FALSE, col.names=FALSE)
+  }
+}
+
+pml_write_files(prediction.valdiation.rf)
+```
+
+
+# Appendix
+## Cleaning the data
+```{r}
+str(pml.training.csv)
+head(pml.training.csv)
+```
+
+```{r}
+str(pml.testing.csv)
+head(pml.testing.csv)
+```
